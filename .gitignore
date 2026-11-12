@@ -1,0 +1,9 @@
+# build output
+app/target/
+
+# course materials and dataset (not ours to redistribute)
+lectures/
+Project-1.pdf
+Project-Dataset-Description.pdf
+Project-EnvSetup-Instructions.pdf
+SP500History.csv
