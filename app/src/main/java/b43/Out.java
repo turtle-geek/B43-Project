@@ -6,7 +6,6 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Console output helpers: tables and value formatting. */
 public final class Out {
     private Out() {}
 
@@ -65,7 +64,6 @@ public final class Out {
         System.out.println(rowLine(headers.toArray(new String[0]), w));
         System.out.println(sep);
         for (String[] row : rows) {
-            // Support multi-line cells (e.g. review text): wrap at 80 chars.
             List<List<String>> cells = new ArrayList<>();
             int height = 1;
             for (int i = 0; i < n; i++) {

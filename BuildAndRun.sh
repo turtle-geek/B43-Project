@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Java application with Maven and starts it.
-# Connection settings (override as needed):
-#   DB_URL=jdbc:postgresql://localhost:5432/mydb DB_USER=postgres DB_PASSWORD=postgres
+# builds and runs the app (set DB_URL, DB_USER, DB_PASSWORD to change the connection)
 set -euo pipefail
 cd "$(dirname "$0")/app"
 mvn -q -DskipTests package

@@ -5,13 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Stock lists (StockList, Creates, SharedWith, Contains).
- * A list can be seen by its creator, the friends it is shared with, and
- * everyone if it is public. Only the creator can change, share or delete it.
- */
 public final class StockListService {
-    /** Symbols in a stock list; used by the statistics. */
     public static final String SYMBOLS = "SELECT Symbol FROM Contains WHERE ListId = ?";
 
     private final Db db;
@@ -24,10 +18,7 @@ public final class StockListService {
         this.friends = friends;
     }
 
-    /**
-     * Query 3: lists the user created, lists shared with them, and public
-     * lists, each tagged by visibility from the user's point of view.
-     */
+    // Query 3
     public List<String[]> accessible(int u) throws SQLException {
         Db.Result r = db.query(
                 "SELECT sl.ListId, sl.Name, sl.Visibility, c.UserId, a.Email " +
@@ -73,7 +64,6 @@ public final class StockListService {
         if (!isCreator(u, l)) throw new AppException("Only the creator of the list can do that.");
     }
 
-    /** {Name, Visibility, creator's Email} of a list. */
     public Object[] info(int l) throws SQLException {
         return db.query(
                 "SELECT sl.Name, sl.Visibility, a.Email " +
@@ -90,7 +80,6 @@ public final class StockListService {
         });
     }
 
-    /** Deletes a list and all of its reviews. */
     public void delete(int u, int l) throws SQLException {
         requireCreator(u, l);
         db.tx(() -> {
@@ -100,7 +89,6 @@ public final class StockListService {
         });
     }
 
-    /** The stocks in a list with their present market value. */
     public Db.Result contents(int u, int l) throws SQLException {
         requireAccess(u, l);
         return db.query(
@@ -116,7 +104,6 @@ public final class StockListService {
         return out;
     }
 
-    /** Adds a stock to the list, or changes its number of shares. */
     public void setStock(int u, int l, String symbol, int shares) throws SQLException {
         requireCreator(u, l);
         stocks.requireExists(symbol);
@@ -133,7 +120,6 @@ public final class StockListService {
         }
     }
 
-    /** Shares the list with a friend; a private list becomes 'shared'. */
     public void share(int u, int l, String email) throws SQLException {
         requireCreator(u, l);
         int f = AuthService.userIdOf(db, email);

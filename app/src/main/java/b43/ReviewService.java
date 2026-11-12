@@ -2,13 +2,6 @@ package b43;
 
 import java.sql.SQLException;
 
-/**
- * Reviews of stock lists (Review, ReviewBy, ReviewFor).
- * A user writes at most one review per list they can access and can edit it.
- * Reviews of a public list are visible to everyone; otherwise a review is
- * visible only to its writer and the list's creator. The writer or the
- * list's creator can delete a review.
- */
 public final class ReviewService {
     private final Db db;
     private final StockListService lists;
@@ -18,30 +11,22 @@ public final class ReviewService {
         this.lists = lists;
     }
 
-    /**
-     * Query 5: the reviews on list l that user u may see.
-     *   R        = sigma ListId=l ((ReviewFor |><| ReviewBy) |><| Review)   -- ReviewDetails view
-     *   PublicR  = R |><| pi ListId (sigma Visibility='public' (StockList))
-     *   OwnR     = sigma UserId=u (R)
-     *   CreatorR = R |><| pi ListId (sigma UserId=u (Creates))
-     *   Answer   = pi ReviewId, UserId, Content, LastEdited ((PublicR U OwnR) U CreatorR)
-     * The answer is joined with Account to show the reviewer's email.
-     */
+    // Query 5: PublicR ∪ OwnR ∪ CreatorR
     public Db.Result visible(int u, int l) throws SQLException {
         lists.requireAccess(u, l);
         return db.query(
                 "SELECT Ans.ReviewId, a.Email AS Reviewer, Ans.LastEdited, Ans.Content " +
                 "FROM Account a, " +
-                "     ((SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited " +        // PublicR
+                "     ((SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited " +
                 "       FROM ReviewDetails R, " +
                 "            (SELECT ListId FROM StockList WHERE Visibility = 'public') P " +
                 "       WHERE R.ListId = P.ListId AND R.ListId = ?) " +
                 "      UNION " +
-                "      (SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited " +        // OwnR
+                "      (SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited " +
                 "       FROM ReviewDetails R " +
                 "       WHERE R.ListId = ? AND R.UserId = ?) " +
                 "      UNION " +
-                "      (SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited " +        // CreatorR
+                "      (SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited " +
                 "       FROM ReviewDetails R, " +
                 "            (SELECT ListId FROM Creates WHERE UserId = ?) C " +
                 "       WHERE R.ListId = C.ListId AND R.ListId = ?)) Ans " +
@@ -50,7 +35,6 @@ public final class ReviewService {
                 l, l, u, u, l);
     }
 
-    /** The user's review on a list, or null if they have none. */
     public Integer ownReview(int u, int l) throws SQLException {
         return (Integer) db.scalar(
                 "SELECT rf.ReviewId FROM ReviewFor rf, ReviewBy rb " +
@@ -77,7 +61,6 @@ public final class ReviewService {
         db.update("UPDATE Review SET Content = ?, LastEdited = CURRENT_TIMESTAMP WHERE ReviewId = ?", content, id);
     }
 
-    /** Deletes a review on list l if u wrote it or created the list. */
     public void delete(int u, int l, int reviewId) throws SQLException {
         lists.requireAccess(u, l);
         int n = db.update(

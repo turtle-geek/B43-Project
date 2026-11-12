@@ -9,10 +9,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Small JDBC helper: parameterised queries, updates and transactions. */
 public final class Db implements AutoCloseable {
-
-    /** Result of a query: column names plus rows. */
     public static final class Result {
         public final List<String> columns;
         public final List<Object[]> rows;
@@ -27,7 +24,6 @@ public final class Db implements AutoCloseable {
         public Object get(int row, int col) { return rows.get(row)[col]; }
     }
 
-    /** Work done inside a transaction. */
     public interface TxWork<T> {
         T run() throws SQLException;
     }
@@ -63,7 +59,6 @@ public final class Db implements AutoCloseable {
         }
     }
 
-    /** First column of the first row, or null if there are no rows. */
     public Object scalar(String sql, Object... params) throws SQLException {
         Result r = query(sql, params);
         return r.isEmpty() ? null : r.get(0, 0);
@@ -73,14 +68,12 @@ public final class Db implements AutoCloseable {
         return !query(sql, params).isEmpty();
     }
 
-    /** INSERT / UPDATE / DELETE; returns the number of rows changed. */
     public int update(String sql, Object... params) throws SQLException {
         try (PreparedStatement ps = prepare(sql, params)) {
             return ps.executeUpdate();
         }
     }
 
-    /** Runs the work as one transaction: commit if it succeeds, roll back otherwise. */
     public <T> T tx(TxWork<T> work) throws SQLException {
         conn.setAutoCommit(false);
         try {

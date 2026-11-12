@@ -7,17 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Statistics of the stocks in a portfolio or stock list over any interval,
- * based on daily close prices:
- *   - coefficient of variation (COV) = standard deviation / mean
- *   - Beta = Cov(stock, market) / Var(market), where the market is the
- *     average close of all stocks each day (MarketDaily view)
- *   - covariance and correlation matrix of the stocks
- * The means, variances and covariances are aggregated in the database with
- * AVG (Var(X) = AVG(X*X) - AVG(X)^2). Results are cached in memory, since they
- * take time to compute; the cache is cleared when new stock data is recorded.
- */
 public final class StatsService {
     private final Db db;
     private final Map<String, Db.Result[]> cache = new HashMap<>();
@@ -26,16 +15,11 @@ public final class StatsService {
         this.db = db;
     }
 
-    /** Called when new stock data is recorded. */
     public void clearCache() {
         cache.clear();
     }
 
-    /**
-     * Shows statistics for the stocks returned by {@code symbolsQuery}, a
-     * query with one parameter {@code id}, e.g.
-     * "SELECT Symbol FROM Holds WHERE PortfolioId = ?".
-     */
+    // COV = stddev / mean, Beta = Cov(stock, market) / Var(market)
     public void show(String symbolsQuery, int id, Date start, Date end) throws SQLException {
         List<String> symbols = new ArrayList<>();
         for (Object[] r : db.query(symbolsQuery + " ORDER BY Symbol", id).rows) symbols.add((String) r[0]);
@@ -58,7 +42,6 @@ public final class StatsService {
         System.out.println("  " + (cached ? "From cache" : "Computed in " + ms + " ms")
                 + ". Based on daily close prices; the market is the average close of all stocks.");
 
-        // COV and Beta of each stock
         List<String[]> rows = new ArrayList<>();
         for (Object[] r : results[0].rows) {
             double mean = num(r[2]), var = num(r[3]), covM = num(r[4]), varM = num(r[5]);
@@ -68,7 +51,6 @@ public final class StatsService {
         }
         Out.table(java.util.Arrays.asList("Symbol", "Days", "COV", "Beta"), rows);
 
-        // Covariance and correlation matrices
         Map<String, double[]> m = new HashMap<>();
         for (Object[] r : results[1].rows) {
             double cov = num(r[2]), varA = num(r[3]), varB = num(r[4]);

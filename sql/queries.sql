@@ -1,77 +1,62 @@
--- =====================================================================
--- The SQL behind each function of the application, for the demo.
--- ? marks a parameter: u = logged-in UserId, p = PortfolioId, l = ListId.
--- The exact statements are in app/src/main/java/b43/*Service.java.
--- =====================================================================
+-- SQL used by each function (? = parameter)
 
--- ---------------------------------------------------------------------
--- Accounts
--- ---------------------------------------------------------------------
-INSERT INTO Account(Email, Password) VALUES (?, ?) RETURNING UserId;      -- register
-SELECT UserId FROM Account WHERE Email = ? AND Password = ?;              -- log in
+-- Register / log in
+INSERT INTO Account(Email, Password) VALUES (?, ?) RETURNING UserId;
+SELECT UserId FROM Account WHERE Email = ? AND Password = ?;
 
--- ---------------------------------------------------------------------
--- Friends
--- ---------------------------------------------------------------------
--- Query 1: friends of u.  F1 U F2
+-- Query 1: F1 ∪ F2
 SELECT a.Email
 FROM Account a,
-     (SELECT UserB AS FriendId FROM FriendsWith WHERE UserA = ?   -- u
+     (SELECT UserB AS FriendId FROM FriendsWith WHERE UserA = ?
       UNION
-      SELECT UserA AS FriendId FROM FriendsWith WHERE UserB = ?) F -- u
+      SELECT UserA AS FriendId FROM FriendsWith WHERE UserB = ?) F
 WHERE a.UserId = F.FriendId;
 
--- Query 2: incoming requests (pending, sent to u)
+-- Query 2: πRequestId, SentBy, SentAt(σSentTo='u' AND Status='pending'(RequestTargets ⋈ FriendRequest))
 SELECT rt.RequestId, a.Email AS SentBy, fr.SentAt
 FROM RequestTargets rt, FriendRequest fr, Account a
 WHERE rt.RequestId = fr.RequestId AND a.UserId = rt.SentBy
   AND rt.SentTo = ? AND fr.Status = 'pending';
 
--- Outgoing requests not answered yet
+-- Outgoing requests
 SELECT rt.RequestId, a.Email AS SentTo, fr.SentAt
 FROM RequestTargets rt, FriendRequest fr, Account a
 WHERE rt.RequestId = fr.RequestId AND a.UserId = rt.SentTo
   AND rt.SentBy = ? AND fr.Status = 'pending';
 
--- Send a request from u to t (one transaction). It is refused if:
---   they are already friends (UserA = smaller id, UserB = larger id)
+-- Send request: refuse if already friends, a request is pending,
+-- or a request was rejected less than 5 minutes ago
 SELECT UserA FROM FriendsWith WHERE UserA = ? AND UserB = ?;
---   a request is already pending in either direction
 SELECT rt.RequestId FROM RequestTargets rt, FriendRequest fr
 WHERE rt.RequestId = fr.RequestId AND fr.Status = 'pending'
   AND ((rt.SentBy = ? AND rt.SentTo = ?) OR (rt.SentBy = ? AND rt.SentTo = ?));
---   a request was rejected (or the friend removed) less than 5 minutes ago
 SELECT rt.RequestId FROM RequestTargets rt, FriendRequest fr
 WHERE rt.RequestId = fr.RequestId AND fr.Status = 'rejected'
   AND fr.RespondedAt > CURRENT_TIMESTAMP - INTERVAL '5 minutes'
   AND ((rt.SentBy = ? AND rt.SentTo = ?) OR (rt.SentBy = ? AND rt.SentTo = ?));
--- otherwise
 INSERT INTO FriendRequest(Status) VALUES ('pending') RETURNING RequestId;
 INSERT INTO RequestTargets(RequestId, SentBy, SentTo) VALUES (?, ?, ?);
 
--- Accept (reject is the same UPDATE with 'rejected' and no INSERT)
+-- Accept / reject
 UPDATE FriendRequest SET Status = 'accepted', RespondedAt = CURRENT_TIMESTAMP WHERE RequestId = ?;
 INSERT INTO FriendsWith(UserA, UserB) VALUES (?, ?);
 
--- Remove a friend: the request that made them friends becomes 'rejected'
--- now, so the 5 minute limit applies to the removed friend too
+-- Remove friend (starts the 5 minute wait)
 DELETE FROM FriendsWith WHERE UserA = ? AND UserB = ?;
 UPDATE FriendRequest SET Status = 'rejected', RespondedAt = CURRENT_TIMESTAMP
 WHERE Status = 'accepted' AND RequestId IN
       (SELECT RequestId FROM RequestTargets
        WHERE (SentBy = ? AND SentTo = ?) OR (SentBy = ? AND SentTo = ?));
 
--- ---------------------------------------------------------------------
--- Portfolios (every statement first checks that u owns p)
--- ---------------------------------------------------------------------
+-- Portfolio ownership check
 SELECT p.Name FROM Portfolio p, OwnsPortfolio o
 WHERE p.PortfolioId = o.PortfolioId AND p.PortfolioId = ? AND o.UserId = ?;
 
--- Create
+-- Create portfolio
 INSERT INTO Portfolio(Name, Cash) VALUES (?, 0) RETURNING PortfolioId;
 INSERT INTO OwnsPortfolio(PortfolioId, UserId) VALUES (?, ?);
 
--- My portfolios with cash and stock value
+-- My portfolios
 SELECT p.PortfolioId, p.Name, p.Cash, SUM(h.Shares * lp.Close) AS StockValue
 FROM Portfolio p
 JOIN OwnsPortfolio o ON o.PortfolioId = p.PortfolioId
@@ -80,61 +65,49 @@ LEFT OUTER JOIN LatestPrice lp ON lp.Symbol = h.Symbol
 WHERE o.UserId = ?
 GROUP BY p.PortfolioId, p.Name, p.Cash;
 
--- Query 4: market value of each holding, the stock total, and the cash.
--- LatestPrice (schema.sql) is Latest and Price from the relational algebra.
+-- Query 4: Value, StockTotal, PortfolioCash
 SELECT h.Symbol, h.Shares, lp.LastTime, lp.Close, h.Shares * lp.Close AS MarketValue
 FROM Holds h LEFT OUTER JOIN LatestPrice lp ON lp.Symbol = h.Symbol
 WHERE h.PortfolioId = ?;
 SELECT SUM(h.Shares * lp.Close) FROM Holds h, LatestPrice lp
-WHERE h.Symbol = lp.Symbol AND h.PortfolioId = ?;                         -- StockTotal
-SELECT Cash FROM Portfolio WHERE PortfolioId = ?;                        -- PortfolioCash
+WHERE h.Symbol = lp.Symbol AND h.PortfolioId = ?;
+SELECT Cash FROM Portfolio WHERE PortfolioId = ?;
 
 -- Deposit / withdraw
 UPDATE Portfolio SET Cash = Cash + ? WHERE PortfolioId = ?;
 UPDATE Portfolio SET Cash = Cash - ? WHERE PortfolioId = ? AND Cash >= ?;
--- Transfer = withdraw from one portfolio + deposit into the other, in one transaction
 
--- Buy n shares at the latest close (one transaction)
+-- Buy
 SELECT Close FROM LatestPrice WHERE Symbol = ?;
 UPDATE Portfolio SET Cash = Cash - ? WHERE PortfolioId = ? AND Cash >= ?;
 UPDATE Holds SET Shares = Shares + ? WHERE PortfolioId = ? AND Symbol = ?;
-INSERT INTO Holds(Symbol, PortfolioId, Shares) VALUES (?, ?, ?);           -- if nothing was updated
+INSERT INTO Holds(Symbol, PortfolioId, Shares) VALUES (?, ?, ?);
 
--- Sell n shares at the latest close (one transaction)
+-- Sell
 UPDATE Holds SET Shares = Shares - ? WHERE PortfolioId = ? AND Symbol = ? AND Shares > ?;
-DELETE FROM Holds WHERE PortfolioId = ? AND Symbol = ? AND Shares = ?;    -- when selling all shares
+DELETE FROM Holds WHERE PortfolioId = ? AND Symbol = ? AND Shares = ?;
 UPDATE Portfolio SET Cash = Cash + ? WHERE PortfolioId = ?;
 
--- ---------------------------------------------------------------------
--- Stock data
--- ---------------------------------------------------------------------
--- Past prices over an interval (historic + new data through the view)
+-- Past prices
 SELECT Timestamp, Open, High, Low, Close, Volume
 FROM StockRecord
 WHERE Symbol = ? AND Timestamp >= ? AND Timestamp <= ?
 ORDER BY Timestamp;
 
--- Record new daily data (historic data is read-only)
-SELECT Symbol FROM StockHistory WHERE Symbol = ? AND Timestamp = ?;      -- refuse if found
+-- Record new daily data
+SELECT Symbol FROM StockHistory WHERE Symbol = ? AND Timestamp = ?;
 UPDATE StockDaily SET Open = ?, High = ?, Low = ?, Close = ?, Volume = ?
 WHERE Symbol = ? AND Timestamp = ?;
 INSERT INTO StockDaily(Symbol, Timestamp, Open, High, Low, Close, Volume)
-VALUES (?, ?, ?, ?, ?, ?, ?);                                            -- if nothing was updated
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
--- Prediction: least-squares line through the last year of closes.
--- x = days before the latest record; slope and intercept come from these sums.
+-- Prediction: sums for the least squares line
 SELECT COUNT(*), SUM(x), SUM(Close), SUM(x * x), SUM(x * Close)
 FROM (SELECT Timestamp - CAST(? AS DATE) AS x, Close
       FROM StockRecord
       WHERE Symbol = ? AND Close IS NOT NULL AND Timestamp > CAST(? AS DATE) - 365) Pts;
 
--- ---------------------------------------------------------------------
--- Statistics of a portfolio or stock list over [start, end]
--- (for a list, replace the subquery with SELECT Symbol FROM Contains WHERE ListId = ?)
--- Var(X) = AVG(X*X) - AVG(X)^2,  Cov(X,Y) = AVG(X*Y) - AVG(X)*AVG(Y)
--- COV = sqrt(Var) / Mean,  Beta = Cov(stock, market) / Var(market),
--- Correlation = Cov(A,B) / sqrt(Var(A) * Var(B))
--- ---------------------------------------------------------------------
+-- Statistics: COV and Beta
 SELECT s.Symbol, COUNT(*) AS Days, AVG(s.Close) AS Mean,
        AVG(s.Close * s.Close) - AVG(s.Close) * AVG(s.Close) AS Var,
        AVG(s.Close * m.MarketClose) - AVG(s.Close) * AVG(m.MarketClose) AS CovMarket,
@@ -147,6 +120,7 @@ WHERE s.Timestamp = m.Timestamp
   AND s.Close IS NOT NULL
 GROUP BY s.Symbol;
 
+-- Statistics: covariance / correlation matrix
 SELECT a.Symbol, b.Symbol,
        AVG(a.Close * b.Close) - AVG(a.Close) * AVG(b.Close) AS Cov,
        AVG(a.Close * a.Close) - AVG(a.Close) * AVG(a.Close) AS VarA,
@@ -159,10 +133,7 @@ WHERE a.Timestamp = b.Timestamp AND a.Symbol <= b.Symbol
   AND a.Close IS NOT NULL AND b.Close IS NOT NULL
 GROUP BY a.Symbol, b.Symbol;
 
--- ---------------------------------------------------------------------
--- Stock lists
--- ---------------------------------------------------------------------
--- Query 3: lists u can see.  StockList |><| ((Own U Shared) U Public)
+-- Query 3: StockList ⋈ ((Own ∪ Shared) ∪ Public)
 SELECT sl.ListId, sl.Name, sl.Visibility, a.Email AS Creator
 FROM StockList sl, Creates c, Account a,
      (SELECT ListId FROM Creates WHERE UserId = ?
@@ -172,65 +143,55 @@ FROM StockList sl, Creates c, Account a,
       SELECT ListId FROM StockList WHERE Visibility = 'public') Acc
 WHERE sl.ListId = Acc.ListId AND c.ListId = sl.ListId AND a.UserId = c.UserId;
 
--- Create
+-- Create list
 INSERT INTO StockList(Name, Visibility) VALUES (?, 'private') RETURNING ListId;
 INSERT INTO Creates(ListId, UserId) VALUES (?, ?);
 
--- Contents with market value
+-- List contents
 SELECT c.Symbol, c.Shares, lp.Close, c.Shares * lp.Close AS MarketValue
 FROM Contains c LEFT OUTER JOIN LatestPrice lp ON lp.Symbol = c.Symbol
 WHERE c.ListId = ?;
 
--- Add a stock / change its shares (creator only)
+-- Add / change / remove stock
 UPDATE Contains SET Shares = ? WHERE ListId = ? AND Symbol = ?;
-INSERT INTO Contains(Symbol, ListId, Shares) VALUES (?, ?, ?);           -- if nothing was updated
-DELETE FROM Contains WHERE ListId = ? AND Symbol = ?;                     -- remove a stock
+INSERT INTO Contains(Symbol, ListId, Shares) VALUES (?, ?, ?);
+DELETE FROM Contains WHERE ListId = ? AND Symbol = ?;
 
--- Share with a friend / make public (creator only)
+-- Share / make public
 INSERT INTO SharedWith(ListId, UserId) VALUES (?, ?);
 UPDATE StockList SET Visibility = 'shared' WHERE ListId = ? AND Visibility = 'private';
 UPDATE StockList SET Visibility = 'public' WHERE ListId = ?;
 
--- Delete a list and its reviews (one transaction); Contains, Creates,
--- SharedWith and ReviewFor rows go with ON DELETE CASCADE
+-- Delete list and its reviews
 DELETE FROM Review WHERE ReviewId IN (SELECT ReviewId FROM ReviewFor WHERE ListId = ?);
 DELETE FROM StockList WHERE ListId = ?;
 
--- ---------------------------------------------------------------------
--- Reviews
--- ---------------------------------------------------------------------
--- Query 5: reviews on list l that u may see.
---   R        = sigma ListId=l ((ReviewFor |><| ReviewBy) |><| Review)  -- ReviewDetails view
---   PublicR  = R |><| pi ListId (sigma Visibility='public' (StockList))
---   OwnR     = sigma UserId=u (R)
---   CreatorR = R |><| pi ListId (sigma UserId=u (Creates))
---   Answer   = pi ReviewId, UserId, Content, LastEdited ((PublicR U OwnR) U CreatorR)
--- (the app also joins Answer with Account to show the reviewer's email)
-(SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited                    -- PublicR
+-- Query 5: (PublicR ∪ OwnR) ∪ CreatorR, R = ReviewDetails view
+(SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited
  FROM ReviewDetails R,
       (SELECT ListId FROM StockList WHERE Visibility = 'public') P
- WHERE R.ListId = P.ListId AND R.ListId = ?)                             -- l
+ WHERE R.ListId = P.ListId AND R.ListId = ?)
 UNION
-(SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited                    -- OwnR
+(SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited
  FROM ReviewDetails R
- WHERE R.ListId = ? AND R.UserId = ?)                                    -- l, u
+ WHERE R.ListId = ? AND R.UserId = ?)
 UNION
-(SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited                    -- CreatorR
+(SELECT R.ReviewId, R.UserId, R.Content, R.LastEdited
  FROM ReviewDetails R,
-      (SELECT ListId FROM Creates WHERE UserId = ?) C                    -- u
- WHERE R.ListId = C.ListId AND R.ListId = ?);                            -- l
+      (SELECT ListId FROM Creates WHERE UserId = ?) C
+ WHERE R.ListId = C.ListId AND R.ListId = ?);
 
--- Write (one transaction, only if u has no review on l yet)
+-- Write review
 SELECT rf.ReviewId FROM ReviewFor rf, ReviewBy rb
 WHERE rf.ReviewId = rb.ReviewId AND rf.ListId = ? AND rb.UserId = ?;
 INSERT INTO Review(Content) VALUES (?) RETURNING ReviewId;
 INSERT INTO ReviewBy(ReviewId, UserId) VALUES (?, ?);
 INSERT INTO ReviewFor(ReviewId, ListId) VALUES (?, ?);
 
--- Edit
+-- Edit review
 UPDATE Review SET Content = ?, LastEdited = CURRENT_TIMESTAMP WHERE ReviewId = ?;
 
--- Delete (by the reviewer or the list's creator)
+-- Delete review
 DELETE FROM Review
 WHERE ReviewId = ?
   AND ReviewId IN (SELECT ReviewId FROM ReviewFor WHERE ListId = ?)

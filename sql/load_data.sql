@@ -1,12 +1,7 @@
--- =====================================================================
--- Load SP500History.csv into Stock and StockHistory.
---   psql -d mydb -v csv=/data/SP500History.csv -f sql/load_data.sql
--- CSV columns: Timestamp,Open,High,Low,Close,Volume,Code
--- =====================================================================
+-- usage: psql -d mydb -v csv=/data/SP500History.csv -f sql/load_data.sql
 
 \set ON_ERROR_STOP on
 
--- Staging table in the same column order as the CSV file
 CREATE TEMP TABLE StageHistory (
     Timestamp DATE,
     Open      FLOAT,

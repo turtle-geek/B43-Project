@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Creates the database, builds the schema and loads SP500History.csv.
-# Run on the VM as the postgres user (with $PGHOME/bin on PATH):
-#   ./setup_db.sh [database] [path/to/SP500History.csv]
+# usage: ./setup_db.sh [database] [path/to/SP500History.csv]
 set -euo pipefail
 
 DB="${1:-mydb}"

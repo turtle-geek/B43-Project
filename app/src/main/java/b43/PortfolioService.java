@@ -4,12 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.SQLException;
 
-/**
- * Portfolios (Portfolio, OwnsPortfolio, Holds). Portfolios are private, so
- * every operation first checks that the logged-in user owns the portfolio.
- */
 public final class PortfolioService {
-    /** Symbols in a portfolio; used by the statistics. */
     public static final String SYMBOLS = "SELECT Symbol FROM Holds WHERE PortfolioId = ?";
 
     private final Db db;
@@ -20,7 +15,6 @@ public final class PortfolioService {
         this.stocks = stocks;
     }
 
-    /** The user's portfolios with their cash and the market value of their stocks. */
     public Db.Result list(int u) throws SQLException {
         return db.query(
                 "SELECT p.PortfolioId, p.Name, p.Cash, SUM(h.Shares * lp.Close) AS StockValue " +
@@ -41,7 +35,6 @@ public final class PortfolioService {
         });
     }
 
-    /** Name of the portfolio; error if the user does not own it. */
     public String name(int u, int p) throws SQLException {
         Object n = db.scalar(
                 "SELECT p.Name FROM Portfolio p, OwnsPortfolio o " +
@@ -50,10 +43,7 @@ public final class PortfolioService {
         return (String) n;
     }
 
-    /**
-     * Query 4: each holding's market value = Shares * latest Close
-     * (LatestPrice is the Latest/Price part of the relational algebra).
-     */
+    // Query 4
     public Db.Result holdings(int u, int p) throws SQLException {
         name(u, p);
         return db.query(
@@ -64,7 +54,7 @@ public final class PortfolioService {
                 "ORDER BY h.Symbol", p);
     }
 
-    /** Query 4: returns {Cash, StockTotal}. The portfolio's value is their sum. */
+    // Query 4: StockTotal and PortfolioCash
     public double[] totals(int p) throws SQLException {
         Object cash = db.scalar("SELECT Cash FROM Portfolio WHERE PortfolioId = ?", p);
         Object stock = db.scalar(
@@ -88,7 +78,6 @@ public final class PortfolioService {
         if (n == 0) throw new AppException("Not enough cash in the portfolio.");
     }
 
-    /** Moves cash from one of the user's portfolios to another. */
     public void transfer(int u, int from, int to, BigDecimal amount) throws SQLException {
         if (from == to) throw new AppException("Choose two different portfolios.");
         name(u, from);
@@ -102,7 +91,6 @@ public final class PortfolioService {
         });
     }
 
-    /** Buys shares at the latest close price. Returns the cost. */
     public BigDecimal buy(int u, int p, String symbol, int shares) throws SQLException {
         name(u, p);
         stocks.requireExists(symbol);
@@ -121,7 +109,6 @@ public final class PortfolioService {
         return cost;
     }
 
-    /** Sells shares at the latest close price. Returns the proceeds. */
     public BigDecimal sell(int u, int p, String symbol, int shares) throws SQLException {
         name(u, p);
         Object held = db.scalar("SELECT Shares FROM Holds WHERE PortfolioId = ? AND Symbol = ?", p, symbol);
@@ -145,7 +132,6 @@ public final class PortfolioService {
         return proceeds;
     }
 
-    /** shares * latest close, rounded to cents. */
     private BigDecimal value(String symbol, int shares) throws SQLException {
         Double price = stocks.latestClose(symbol);
         if (price == null) throw new AppException("No price data for " + symbol + ".");

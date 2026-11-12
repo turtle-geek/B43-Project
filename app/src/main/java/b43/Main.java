@@ -8,15 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Command-line interface of the stock social network.
- *
- * Database connection (environment variables, defaults in brackets):
- *   DB_URL [jdbc:postgresql://localhost:5432/mydb], DB_USER [postgres], DB_PASSWORD [postgres]
- */
 public final class Main {
-
-    /** A menu action that may use the database. */
     private interface Action {
         void run() throws SQLException;
     }
@@ -57,7 +49,6 @@ public final class Main {
         return v == null || v.isEmpty() ? dflt : v;
     }
 
-    /** Runs an action and prints any error instead of exiting. */
     private void attempt(Action a) {
         try {
             a.run();
@@ -99,10 +90,6 @@ public final class Main {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Account
-    // ------------------------------------------------------------------
-
     private void register() throws SQLException {
         String e = In.nonEmpty("Email: ");
         String p = In.nonEmpty("Password: ");
@@ -119,10 +106,6 @@ public final class Main {
         Out.ok("Logged in as " + email + ".");
     }
 
-    // ------------------------------------------------------------------
-    // Portfolios
-    // ------------------------------------------------------------------
-
     private void portfoliosMenu() {
         while (true) {
             Out.header("My portfolios");
@@ -135,7 +118,7 @@ public final class Main {
             if (c.equals("1")) {
                 int p = In.integer("Portfolio ID: ");
                 attempt(() -> {
-                    portfolios.name(user, p);   // checks ownership
+                    portfolios.name(user, p);
                     portfolioMenu(p);
                 });
             } else if (c.equals("2")) {
@@ -219,7 +202,6 @@ public final class Main {
         }
     }
 
-    /** Asks for one of the given stocks. */
     private String pickSymbol(List<String> syms) {
         if (syms.isEmpty()) throw new AppException("There are no stocks here.");
         System.out.println("  Stocks: " + String.join(", ", syms));
@@ -234,11 +216,6 @@ public final class Main {
         return out;
     }
 
-    // ------------------------------------------------------------------
-    // Stocks: history, prediction, new data
-    // ------------------------------------------------------------------
-
-    /** Interval ending at the given date: week, month, quarter, year, 5 years or custom. */
     private Date[] pickInterval(Date end) {
         if (end == null) throw new AppException("There is no stock data.");
         LocalDate e = end.toLocalDate();
@@ -260,7 +237,6 @@ public final class Main {
         }
     }
 
-    /** Table and plot of a stock's past close prices. */
     private void showHistory(String symbol) throws SQLException {
         stocks.requireExists(symbol);
         Date[] iv = pickInterval(stocks.lastDate(symbol));
@@ -281,7 +257,6 @@ public final class Main {
         if (r.size() <= 30 || In.yes("Show all " + r.size() + " rows as a table?")) Out.table(r);
     }
 
-    /** Plot and table of predicted close prices. */
     private void showPrediction(String symbol) throws SQLException {
         stocks.requireExists(symbol);
         System.out.println("  Predict how far ahead?");
@@ -347,10 +322,6 @@ public final class Main {
             }
         }
     }
-
-    // ------------------------------------------------------------------
-    // Stock lists and reviews
-    // ------------------------------------------------------------------
 
     private void listsMenu() {
         while (true) {
@@ -466,10 +437,6 @@ public final class Main {
             }
         }
     }
-
-    // ------------------------------------------------------------------
-    // Friends
-    // ------------------------------------------------------------------
 
     private void friendsMenu() {
         while (true) {

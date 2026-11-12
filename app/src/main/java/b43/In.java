@@ -8,14 +8,12 @@ import java.sql.Date;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 
-/** Console input helpers. */
 public final class In {
     private static final BufferedReader READER =
             new BufferedReader(new InputStreamReader(System.in));
 
     private In() {}
 
-    /** Reads a trimmed line; exits cleanly on end of input. */
     public static String line(String prompt) {
         System.out.print(prompt);
         System.out.flush();
@@ -40,7 +38,6 @@ public final class In {
         }
     }
 
-    /** Reads text spanning several lines, terminated by a line containing only ".". */
     public static String multiline(String prompt) {
         System.out.println(prompt + " (finish with a line containing only '.')");
         StringBuilder sb = new StringBuilder();
@@ -85,7 +82,6 @@ public final class In {
         }
     }
 
-    /** Reads a non-negative number; empty input returns the default (may be null). */
     public static Double optionalDouble(String prompt, Double dflt) {
         while (true) {
             String s = line(prompt);

@@ -7,10 +7,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Stock data through the StockRecord view (historic + new data):
- * latest prices, price history, recording new daily data, and prediction.
- */
 public final class StockService {
     private final Db db;
 
@@ -24,23 +20,19 @@ public final class StockService {
         }
     }
 
-    /** Present value of one share: the Close on the latest Timestamp. */
     public Double latestClose(String symbol) throws SQLException {
         Object c = db.scalar("SELECT Close FROM LatestPrice WHERE Symbol = ?", symbol);
         return c == null ? null : ((Number) c).doubleValue();
     }
 
-    /** Latest date with data for a stock. */
     public Date lastDate(String symbol) throws SQLException {
         return (Date) db.scalar("SELECT MAX(Timestamp) FROM StockRecord WHERE Symbol = ?", symbol);
     }
 
-    /** Latest date in all the stock data. */
     public Date lastDate() throws SQLException {
         return (Date) db.scalar("SELECT MAX(Timestamp) FROM StockRecord");
     }
 
-    /** Daily records of a stock between two dates. */
     public Db.Result history(String symbol, Date start, Date end) throws SQLException {
         return db.query(
                 "SELECT Timestamp, Open, High, Low, Close, Volume " +
@@ -49,11 +41,6 @@ public final class StockService {
                 "ORDER BY Timestamp", symbol, start, end);
     }
 
-    /**
-     * Records one day of new stock data in StockDaily. The historic data is
-     * read-only, so a day already in StockHistory cannot be entered again.
-     * Entering a day already in StockDaily corrects that record.
-     */
     public void addDaily(String symbol, Date date, Double open, Double high, Double low,
                          double close, Long volume) throws SQLException {
         if (close <= 0) throw new AppException("Close must be positive.");
@@ -79,24 +66,14 @@ public final class StockService {
         });
     }
 
-    // ------------------------------------------------------------------
-    // Prediction
-    // ------------------------------------------------------------------
-
-    /** Past and predicted close prices for plotting. */
     public static final class Prediction {
         public final List<String> dates = new ArrayList<>();
-        public final List<Double> past = new ArrayList<>();      // null for future days
-        public final List<Double> predicted = new ArrayList<>(); // null for past days
+        public final List<Double> past = new ArrayList<>();
+        public final List<Double> predicted = new ArrayList<>();
         public double slopePerDay;
     }
 
-    /**
-     * Predicts future close prices with a straight line (least squares)
-     * fitted to the last year of closes. The sums the fit needs are
-     * computed in the database with aggregation; x is the number of days
-     * before the latest record (0 on the latest day, negative before it).
-     */
+    // least squares line through the last year of closes
     public Prediction predict(String symbol, int tradingDays) throws SQLException {
         Date last = lastDate(symbol);
         if (last == null) throw new AppException("No data for " + symbol + ".");
@@ -119,7 +96,6 @@ public final class StockService {
         Prediction p = new Prediction();
         p.slopePerDay = slope;
 
-        // Recent closes to show before the prediction (the last 90 days)
         Db.Result recent = db.query(
                 "SELECT Timestamp, Close FROM StockRecord " +
                 "WHERE Symbol = ? AND Close IS NOT NULL AND Timestamp > CAST(? AS DATE) - 90 " +
@@ -130,7 +106,6 @@ public final class StockService {
             p.predicted.add(null);
         }
 
-        // Future trading days (skip weekends)
         LocalDate lastDay = last.toLocalDate();
         LocalDate d = lastDay;
         for (int i = 0; i < tradingDays; i++) {

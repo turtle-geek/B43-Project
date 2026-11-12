@@ -3,12 +3,7 @@ package b43;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Plots one or more series sharing an x-axis (dates) as an ASCII line chart.
- * Values may be NaN where a series has no point.
- */
 public final class AsciiChart {
-
     public static final class Series {
         final String name;
         final char mark;
@@ -34,7 +29,6 @@ public final class AsciiChart {
         }
         int cols = Math.min(WIDTH, n);
 
-        // Bucket each series into `cols` columns by averaging.
         List<double[]> bucketed = new ArrayList<>();
         double min = Double.POSITIVE_INFINITY, max = Double.NEGATIVE_INFINITY;
         for (Series s : series) {
